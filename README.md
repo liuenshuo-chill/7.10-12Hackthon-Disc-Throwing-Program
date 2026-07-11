@@ -181,12 +181,13 @@ scripts/
 
 **高擎Panthera-HT机械臂**
 **Intel RealSenseD405深度摄像机**
-**合适形状的夹爪**：本次所用为自主设计3D打印的夹爪，[上夹爪设计文件](./design_gripper/redesign_upper_gripper.3mf)、[下夹爪设计文件](./design_gripper/redesign_lower_gripper.3mf)高擎Panthera-HT机械臂有自带夹爪，如需复现也可以自己设计
+**合适形状的夹爪**：本次所用为自主设计3D打印的夹爪：[上夹爪设计文件](./redesign_gripper/redesign_upper_gripper.3mf)、[下夹爪设计文件](./redesign_gripper/redesign_lower_gripper.3mf)。高擎Panthera-HT机械臂有自带夹爪，如需复现也可以自己设计
 **飞盘**：可根据测试情况自行选择。本次采用的是红色儿童软盘，抓取和扔出的效果相对较好。本次测试也尝试了175g Ultimate Frisbee成人比赛用盘，相对效果不如儿童软盘，但也可以以一定自转速度扔出。
 
 ## (4) 资料参考
 
 [高擎官方Panthera-HT SDK](https://github.com/HighTorque-Robotics/Panthera-HT_SDK)
+
 [Panthera_HT_SDK_Extensions](https://github.com/HighTorque-Robotics/Panthera_HT_SDK_Extensions)
 
 本项目特别致谢高擎动力的支持。用到的绝大部分代码都参考了高擎SDK的代码中的思路，在此为感兴趣的同学提供相关代码，SDK学习/调用路径。
