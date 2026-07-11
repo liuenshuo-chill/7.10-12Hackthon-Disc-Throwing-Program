@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-原速回放 arm-only jsonl 轨迹。
+倍速回放 arm-only jsonl 轨迹。
 不交互，不选择文件，直接回放 TRAJECTORY_FILE。
 """
 
