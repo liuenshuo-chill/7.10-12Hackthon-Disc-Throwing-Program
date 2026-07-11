@@ -174,7 +174,8 @@ scripts/
 ├── arm_teach_20260711_005433.jsonl     ← 本次demo所用示教数据记录文件
 ├── hand_eye_calibration.json           ← 本次所用手眼标定的数据文件
 ├── red_disc_detection.py               ← 识别红色飞盘
-└── red_frisbee_FollowGrasp.py           ← 跟随并抓取红色飞盘
+├── red_frisbee_FollowGrasp.py          ← 跟随并抓取红色飞盘
+└── Demo.py                             ← Demo整合代码
 ```
 
 ## （3）硬件要求
