@@ -147,8 +147,8 @@ def get_safe_joint1_bounds(robot):
     """
     if robot.joint_limits is None:
         return None, None
-    lower0 = float(robot.joint_limits['lower'][0]) 
-    upper0 = float(robot.joint_limits['upper'][0]) 
+    lower0 = float(robot.joint_limits['lower'][0]) * JOINT_LIMIT_SAFETY_FACTOR
+    upper0 = float(robot.joint_limits['upper'][0]) * JOINT_LIMIT_SAFETY_FACTOR
     return lower0, upper0
 
 
@@ -169,6 +169,13 @@ def print_joint_target_vs_limits(robot, label, target_pos):
         in_range = lower[i] <= pos <= upper[i]
         flag = "OK" if in_range else "!! 超限 !!"
         print(f"    关节{i + 1}: 目标={pos:.4f}  限位=[{lower[i]:.4f}, {upper[i]:.4f}]  {flag}")
+
+
+# Joint_Pos_Vel(iswait=True) 最终返回的是 wait_for_position() 的结果，不是"目标位置
+# 是否超限"的结果——位置检查通过后指令已经真的发给电机了，wait_for_position() 只是
+# 在这个 timeout 时间内反复确认有没有真的走到。默认15秒对"慢速+大角度"的组合不够用，
+# 直接给一个足够大的固定值，比每次去算"距离÷速度"更省事。
+SLOW_MOVE_TIMEOUT_S = 60.0
 
 # =============================================================================
 # 阶段1：视觉伺服抓取参数（沿用 4_red_frisbee_FollowGrasp.py 的取值）
@@ -444,8 +451,8 @@ def scan_for_teammate(robot, pipeline, align, yolo_model):
 
     lower0, upper0 = get_safe_joint1_bounds(robot)   # 只用 JOINT_LIMIT_SAFETY_FACTOR 那一部分量程
     if robot.joint_limits is not None:
-        raw_lower0 = float(robot.joint_limits['lower'][0])* JOINT_LIMIT_SAFETY_FACTOR
-        raw_upper0 = float(robot.joint_limits['upper'][0])* JOINT_LIMIT_SAFETY_FACTOR
+        raw_lower0 = float(robot.joint_limits['lower'][0])
+        raw_upper0 = float(robot.joint_limits['upper'][0])
         print(f"[阶段2] 关节1真实限位: [{raw_lower0:.3f}, {raw_upper0:.3f}] rad，"
               f"缩放({JOINT_LIMIT_SAFETY_FACTOR}倍)后安全边界: [{lower0:.3f}, {upper0:.3f}] rad")
     # ── 阶段1→阶段2 过渡：分两步走，不能直接把关节1转到极限位置 ──
@@ -459,9 +466,15 @@ def scan_for_teammate(robot, pipeline, align, yolo_model):
     zero_rest_pos = [post_grasp_pos[0]] + [0.0] * 5
     print(f"[阶段2] 第一步: 关节2~6先回零位(关节1暂不动): {np.round(zero_rest_pos, 3)}")
     print_joint_target_vs_limits(robot, "阶段2-第一步", zero_rest_pos)
-    ok = robot.Joint_Pos_Vel(zero_rest_pos, HOME_JOINT_VEL, None, iswait=True)
+    ok = robot.Joint_Pos_Vel(zero_rest_pos, HOME_JOINT_VEL, None, iswait=True,
+                             timeout=SLOW_MOVE_TIMEOUT_S)
     if not ok:
-        raise RuntimeError("阶段2: 关节2~6回零位被限位保护拒绝，请检查抓取后姿态是否异常")
+        raise RuntimeError(
+            "阶段2: 关节2~6回零位失败——六个关节目标位置本身没有超限（见上面打印），"
+            "大概率是 wait_for_position() 在算出来的timeout内没等到实际到位"
+            "（比如物理卡住/夹着的飞盘干涉/速度设置太慢配合关节角度大导致的），"
+            "不是限位保护拒绝，请检查机械臂实际有没有真的在动"
+        )
 
     other_pos = [0.0] * 5   # 扫描全程关节2~6保持在零位
 
@@ -475,9 +488,15 @@ def scan_for_teammate(robot, pipeline, align, yolo_model):
     print(f"[阶段2] 第二步: 关节2~6已回零，转动关节1到扫描起始位置(={scan_start_j1:.3f}rad，"
           f"关节1限位的{JOINT_LIMIT_SAFETY_FACTOR*100:.0f}%处): {np.round(scan_start_pos, 3)}")
     print_joint_target_vs_limits(robot, "阶段2-第二步", scan_start_pos)
-    ok = robot.Joint_Pos_Vel(scan_start_pos, HOME_JOINT_VEL, None, iswait=True)
+    ok = robot.Joint_Pos_Vel(scan_start_pos, HOME_JOINT_VEL, None, iswait=True,
+                             timeout=SLOW_MOVE_TIMEOUT_S)
     if not ok:
-        raise RuntimeError("阶段2: 移动到扫描起始位置被限位保护拒绝，请检查 JOINT_LIMIT_SAFETY_FACTOR 设置")
+        raise RuntimeError(
+            "阶段2: 移动到扫描起始位置失败——六个关节目标位置本身没有超限（见上面打印），"
+            "大概率是 wait_for_position() 在算出来的timeout内没等到实际到位"
+            "（比如转动距离较大、速度设置较慢导致实际耗时超出预期，或者机械臂物理上"
+            "卡住了），不是限位保护拒绝。请先确认机械臂运行过程中是否真的在转动"
+        )
 
     # ── 注意：这里不用 Joint_Vel() ──
     # 你现有的所有脚本（记录/回放/抓取）全程只用 pos_vel_tqe_kp_kd（MIT五参数模式）
@@ -649,9 +668,14 @@ def rotate_90_with_limit_check(robot, current_pos):
 
     print(f"[阶段3] 关节1正转: {current_pos[0]:.3f} -> {target_pos[0]:.3f} rad")
     print_joint_target_vs_limits(robot, "阶段3", target_pos)
-    ok = robot.Joint_Pos_Vel(target_pos, ROTATE90_VEL, None, iswait=True)
+    ok = robot.Joint_Pos_Vel(target_pos, ROTATE90_VEL, None, iswait=True,
+                             timeout=SLOW_MOVE_TIMEOUT_S)
     if not ok:
-        raise RuntimeError("阶段3: 关节限位保护拒绝了本次转动指令")
+        raise RuntimeError(
+            "阶段3: 转动90°失败——目标位置本身没有超限（见上面打印），大概率是"
+            "wait_for_position() 超时没等到实际到位，不是限位保护拒绝，"
+            "请检查机械臂运行过程中是否真的在转动"
+        )
 
     zero_pos = list(robot.get_current_pos())
     print(f"[阶段3] 已到达新的'零位置': {np.round(zero_pos, 3)}")
@@ -843,9 +867,14 @@ def main():
     # ——这个姿态和由它算出来的 home_rotation 直接决定阶段1视觉伺服IK解不解得出来。
     print(f"[阶段0] 移动到初始位置(速度放慢，不求快只求到位): {HOME_JOINT_POS}")
     print_joint_target_vs_limits(robot, "阶段0", HOME_JOINT_POS)
-    ok = robot.Joint_Pos_Vel(HOME_JOINT_POS, HOME_JOINT_VEL, None, iswait=True)
+    ok = robot.Joint_Pos_Vel(HOME_JOINT_POS, HOME_JOINT_VEL, None, iswait=True,
+                             timeout=SLOW_MOVE_TIMEOUT_S)
     if not ok:
-        raise RuntimeError("阶段0: 移动到 HOME_JOINT_POS 被限位保护拒绝，请检查该姿态是否合理")
+        raise RuntimeError(
+            "阶段0: 移动到 HOME_JOINT_POS 失败——目标位置本身没有超限（见上面打印），"
+            "大概率是 wait_for_position() 超时没等到实际到位，不是限位保护拒绝，"
+            "请检查机械臂运行过程中是否真的在转动"
+        )
     time.sleep(0.5)
 
     fk_home = robot.forward_kinematics()
@@ -885,7 +914,11 @@ def main():
         # ── 阶段5 ──
         print("\n[阶段5] 回到零位置...")
         print_joint_target_vs_limits(robot, "阶段5", zero_pos)
-        robot.Joint_Pos_Vel(zero_pos, JOINT_VEL, None, iswait=True)
+        ok5 = robot.Joint_Pos_Vel(zero_pos, JOINT_VEL, None, iswait=True,
+                                  timeout=SLOW_MOVE_TIMEOUT_S)
+        if not ok5:
+            print("[阶段5] 警告: 回零位似乎没在预计时间内到位（不是限位问题），"
+                  "请检查机械臂当前实际状态")
         print("[阶段5] 完成，demo结束")
 
     except KeyboardInterrupt:
